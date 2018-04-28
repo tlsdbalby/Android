@@ -17,8 +17,10 @@ public class MainActivity extends AppCompatActivity {
         findViewById(R.id.take_picture).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
+                mCamera.initCamera();
                 mCamera.openCamera();
                 mCamera.takePicture();
+//                mCamera.closeCamera();
             }
         });
 

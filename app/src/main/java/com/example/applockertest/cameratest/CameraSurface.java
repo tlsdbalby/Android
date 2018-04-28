@@ -34,6 +34,7 @@ public class CameraSurface extends SurfaceView implements SurfaceHolder.Callback
 
     public Camera mCamera;
     protected SurfaceHolder mHolder;
+    private int mParamFormat, mParamWidth, mParamHeight;
 
     //用于筛选最佳像素
     private List<Camera.Size> mSupportedPreviewSizes;
@@ -44,18 +45,112 @@ public class CameraSurface extends SurfaceView implements SurfaceHolder.Callback
      */
     private static final int DELAY_CAPTURE_TIME = 300;
 
+    public CameraSurface(Context context) {
+        super(context);
+        initConfig();
+    }
 
     public CameraSurface(Context paramContext, AttributeSet paramAttributeSet) {
         super(paramContext, paramAttributeSet);
+        initConfig();
+    }
+
+    private void initConfig () {
 
         mHolder = getHolder();
         mHolder.setType(SurfaceHolder.SURFACE_TYPE_PUSH_BUFFERS);
         mHolder.addCallback(this);
 
-        IsPreView = false;
-        IsCapture = false;
     }
 
+    public void surfaceCreated(SurfaceHolder paramSurfaceHolder) {
+        //这个paramSurfaceHolder 就是 mHolder
+    }
+
+    public void surfaceChanged(SurfaceHolder paramSurfaceHolder, int paramInt1,
+                               int paramInt2, int paramInt3) {
+        mParamFormat = paramInt1;
+        mParamWidth = paramInt2;
+        mParamHeight = paramInt3;
+    }
+
+
+    public void surfaceDestroyed(SurfaceHolder paramSurfaceHolder) {
+        closeCamera();
+    }
+
+    public void initCamera() {
+        if (mCamera == null) {
+            try {
+                mCamera = Camera.open(getFrontCameraId());
+                updateCameraDisplayOrientation();
+                mCamera.setPreviewDisplay(mHolder);
+            } catch (IOException localIOException) {
+                mCamera.release();
+                mCamera = null;
+            }
+        }
+    }
+
+
+    public void openCamera() {
+        if (mCamera == null)
+            return;
+        if (IsPreView)
+            mCamera.stopPreview();
+        Camera.Parameters localParameters = mCamera.getParameters();
+        setPreferredSize(localParameters, mParamWidth, mParamHeight);
+        setPreferredFormat(localParameters, mParamFormat);
+        mCamera.setParameters(localParameters);
+        setPictureSize();
+        mCamera.startPreview();
+        IsPreView = true;
+    }
+
+    public void takePicture() {
+        Handler mHandler = new Handler();
+        try {
+            mCamera.cancelAutoFocus();
+            mCamera.autoFocus(new Camera.AutoFocusCallback() {
+                @Override
+                public void onAutoFocus(boolean success, Camera camera) {
+                    if (!IsCapture) {
+                        IsCapture = true;
+                        camera.takePicture(null, null, mJpegCallback);
+
+                    }
+                }
+            });
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        //当对焦失败时调用照相功能，即无论对焦成功与否都要拍照
+        mHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if (!IsCapture) {
+                    IsCapture = true;
+                    mCamera.takePicture(null, null, mJpegCallback);
+                }
+            }
+        }, DELAY_CAPTURE_TIME);
+    }
+
+
+    public void closeCamera() {
+        if (mCamera != null) {
+            if (IsPreView) {
+                mCamera.stopPreview();
+            }
+            IsPreView = false;
+            mCamera.release();
+            mCamera = null;
+        }
+    }
+
+    /**
+     * 设置预览参数
+     */
     private void setPreferredFormat(Camera.Parameters paramParameters,
                                     int paramInt) {
         Iterator<Integer> localIterator = paramParameters
@@ -83,84 +178,6 @@ public class CameraSurface extends SurfaceView implements SurfaceHolder.Callback
         }
     }
 
-    public void surfaceCreated(SurfaceHolder paramSurfaceHolder) {
-        if (mCamera == null) {
-            try {
-                mCamera = Camera.open(getFrontCameraId());
-                updateCameraDisplayOrientation();
-                mCamera.setPreviewDisplay(paramSurfaceHolder);
-            } catch (IOException localIOException) {
-                mCamera.release();
-                mCamera = null;
-            }
-        }
-    }
-
-    public void surfaceChanged(SurfaceHolder paramSurfaceHolder, int paramInt1,
-                               int paramInt2, int paramInt3) {
-        if (mCamera == null)
-            return;
-        if (IsPreView)
-            mCamera.stopPreview();
-        Camera.Parameters localParameters = mCamera.getParameters();
-        setPreferredSize(localParameters, paramInt2, paramInt3);
-        setPreferredFormat(localParameters, paramInt1);
-        mCamera.setParameters(localParameters);
-        setPictureSize();
-    }
-
-
-    public void surfaceDestroyed(SurfaceHolder paramSurfaceHolder) {
-        if (mCamera != null) {
-            if (IsPreView) {
-                mCamera.stopPreview();
-            }
-            IsPreView = false;
-            mCamera.release();
-            mCamera = null;
-        }
-    }
-
-
-    public void openCamera() {
-        mCamera.startPreview();
-        IsPreView = true;
-    }
-
-    public void takePicture() {
-        Handler mHandler = new Handler();
-        try {
-            mCamera.cancelAutoFocus();
-            mCamera.autoFocus(new Camera.AutoFocusCallback() {
-                @Override
-                public void onAutoFocus(boolean success, Camera camera) {
-                    if (!IsCapture){
-                        camera.takePicture(null, null, mJpegCallback);
-                        IsCapture = true;
-                    }
-            }
-            });
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        //当对焦失败时调用照相功能，即无论对焦成功与否都要拍照
-        mHandler.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                if (!IsCapture) {
-                    mCamera.takePicture(null, null, mJpegCallback);
-                }
-            }
-        }, DELAY_CAPTURE_TIME);
-    }
-
-
-    public void closeCamera() {
-        if (mCamera != null) {
-            mCamera.release();
-            mCamera = null;
-        }
-    }
 
     /**
      * 获取前置摄像头的Id
@@ -172,7 +189,7 @@ public class CameraSurface extends SurfaceView implements SurfaceHolder.Callback
         Camera.CameraInfo info = new Camera.CameraInfo();
         for (int i = 0; i < numberOfCameras; i++) {
             Camera.getCameraInfo(i, info);
-            if (info.facing == Camera.CameraInfo.CAMERA_FACING_BACK) {
+            if (info.facing == Camera.CameraInfo.CAMERA_FACING_FRONT) {
                 return i;
             }
         }
